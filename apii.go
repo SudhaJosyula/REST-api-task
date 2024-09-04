@@ -1,44 +1,48 @@
-
 package main
 
 import (
-	
-	
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"net/http"
-	"time"
 	"io/ioutil"
+	"net/http"
+	"os"
+	"time"
+
 	"github.com/gorilla/mux"
+	_ "github.com/joho/godotenv/autoload"
 )
 
+//Handler functions to routes
 
-func getFileHandler(w http.ResponseWriter, r *http.Request){
+// get handlers
+
+//to get a file 
+func getFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodGet {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
 	vars := mux.Vars(r)
-	
-	id := vars["folderId"]
-	fid := vars["fileId"]
-	t_id := vars["tenantId"]
 
-	url := "https://rolodex.dev.maersk-digital.net/api/v1/storage/folders/" +id+"/files/" + fid
-	tok := "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IktRMnRBY3JFN2xCYVZWR0JtYzVGb2JnZEpvNCIsImtpZCI6IktRMnRBY3JFN2xCYVZWR0JtYzVGb2JnZEpvNCJ9.eyJhdWQiOiJhcGk6Ly80YTgxNzU2ZS01Y2Y1LTRmMmItYmJjNy1mNjVmYWIyMWQ2YWIiLCJpc3MiOiJodHRwczovL3N0cy53aW5kb3dzLm5ldC8wNWQ3NWMwNS1mYTFhLTQyZTctOWNmMS1lYjQxNmMzOTZmMmQvIiwiaWF0IjoxNzI1Mjc0MjA0LCJuYmYiOjE3MjUyNzQyMDQsImV4cCI6MTcyNTI3ODg5NywiYWNyIjoiMSIsImFpbyI6IkFaUUFhLzhYQUFBQXBkcE51S0I4MmN3Z0ZQN094K2VWOG1QSjY0UGUzU1JpcHU5aUlYMWRQejNqQS9tajF4b1JlR0JkeXlsSW1WSEVwNUR2d3BMdTRoUFlYOHRtZWRtQXM0anJEYVo1djMxNFBkcncyRThHaXNqcFlVRWt4bWt2blMzbjY3akoxblZWenZtOVdWOVBaS1RScXNwNkZzeEE1ang5dVVwd3ozYkdpZ3FPdHVHQnQyaUlCVGtGTFBuRGpLOUJyOTNldDFsUCIsImFtciI6WyJyc2EiLCJtZmEiXSwiYXBwaWQiOiJiNTg3MmUxNS01NzA5LTRlNmMtODA1OS01ZmE5MDdiOTVkOTciLCJhcHBpZGFjciI6IjAiLCJkZXZpY2VpZCI6IjgyYWI3ZWQ4LTg2YWQtNGFlNS05ZWRmLTg4NTZkOTdmNDA4MyIsImZhbWlseV9uYW1lIjoiU2FpIFN1ZGhhIiwiZ2l2ZW5fbmFtZSI6Ikpvc3l1bGEgU2l0YSIsImdyb3VwcyI6WyJiNzgyYjgwMy1iNjI3LTQ0NzctODgyNi1mM2ViMWYyMmIwZjgiLCJjZjdjZDcwNS0xNzIxLTRiNTItYmNlYS1hNjg1YTQwODZjZDQiLCI4MmUxODcwOS02OTczLTQwZjItYmQzNy05ZGYzYTkyOGJiOTQiLCJmOWRjNmQwZC1lODM4LTQ3OGYtODE1ZC05MzI3ODI2MDQxNDciLCJlOWMzODUxYS1jYzVkLTRmZGItOGRlOS0wY2Q2YTM0MGM0ZGMiLCJiMWIwZTkxYS1iOGMwLTRjNDctOGM4MS1mYjA4MmQyZDc1ZTEiLCJlM2Q3MzUxZi1hMjllLTQ0MDUtYTAwNi1hZjg2ODk1ZWRhMDEiLCI1MGQ3NTAyMi1lYjZlLTRlNTYtOGMzZC1kNDdiMmM2MGUwMjEiLCJhOTUxMTgyNC02ZWYxLTRjYmQtODM2Yi02NGVlNGRmMjVhNjkiLCJhZWNjOTMyNC0yMDM1LTRmMWQtOTMzZC1hMDQ4YTQ5OTFlYWYiLCIyNTRjM2UyOC02M2RmLTQ0MzgtOWEzNi02OWRhMzEwMjVkNzIiLCJjMWIzOGUzNi01OGY4LTRiMzktYTAzOC1hMDMwNzRmZTY4MTgiLCJjNDYzZjgzNi0yMmY1LTQ3MTQtOTNkZS0xMDcyMjkzYjQ2ZWEiLCJhZjAzODkzOC04YTI2LTQ0NWEtODZlZC02NThkMDhiY2UwYmMiLCI3ZWQ2ZjgzOS1lOTNiLTQ4YzAtYWRhMS04ODI3ZDU0ZjhmZGQiLCI3N2U3NzgzZS0xMDJjLTQzMzQtOWI4Mi0zY2RkYTYyODEzMDIiLCJmNDQzMGMzZi1iMzMzLTRjNGYtYTFmZC1iNjk2NWMzYWUxN2IiLCJjZjg4M2IzZi1iNzAwLTQ1ZTUtOTZkOS04NzQ4MmY4ZmQ3MmUiLCI5OTY5MTE0MC0zODRlLTQzNmQtODdmZi04NjFlN2IzNjEwMzciLCI5OTk3NGE0Mi1lYzc4LTQ1ZTAtOWM0OC03M2JiZjJkNDA3ZTkiLCI3ZGMxNDE0NC0wODA3LTQzYjctOTk2Ny0wZTg1NjEwMWRiNDEiLCI1MjViYjA0NS0yMjUxLTRjYjQtYWUxZS0yNzFkM2MwZDcyOTkiLCJmMDhlMjQ0OC0zMjljLTQ3M2YtODdiYi1iNzg5OGU5M2Q2YTIiLCJiMmEwNWQ0Yi1kZmE5LTRjNzktODQ4Yy0xZjk4OTZmMTk4YTYiLCIyYjgxODk0Yy05ZmE0LTQzOTUtODBmYy1kMWQ3MTJiNDQ5MDEiLCJmYjM4MjA0ZC00YTYyLTRkNTAtYWEzMy1jMzc3YTllZWMzZGUiLCJkZmM4ZDY1YS0yMjJhLTQwZWEtYTA3Ny0xYTFjMGY3OWQ5YWQiLCJkNjczN2M2YS03MmJhLTQwOTMtOWY5ZC05N2U1MjBiMmM2MTUiLCI4Njc0M2E2Yi1lMzkzLTRhY2UtYTgwMy03OTMzNjk0ZjdjZTIiLCJmMWNlZjU2Yi1lNjE5LTQ2ZGYtYWQ5Yy03NTJhMjI0OGFjMzIiLCJiZDYyYmU2Yy01ZWNiLTQ4NzgtODcyYy1hYzliN2YzN2QzYTIiLCI4YzE2MDM2ZC04Njk4LTQyZTAtYjE0Yy1lZjAyNjdhZTFhMmEiLCI5OThmMmE2ZC0zNzllLTRmYmUtYmYzYy1lNDU0OWE4ODg4YmMiLCI3MTFiZWE2ZS0wMWY4LTQyYmUtYTY0Mi1lOTE0NTA4ZDkwZDEiLCIwODU5N2Q3MC03OWEyLTQyMjctOTFlYy1mOGQ2YzJlNGJlNjUiLCJiNjg4YzA3MC0yZDJjLTRlMTItYWUyZC1hOTViZGI4ZDQxYTQiLCI3MGE5ZmQ3My00NjY2LTRlZjQtOWIzOS0xYTQ4MmQ0OTliZTIiLCJlYjM1NDU3NC02ZmMzLTRlNjEtYjZiOS1hMzM1MDU5NTk2YjAiLCI5MmY3Nzk3Yi02YjI3LTQ2MDgtYmM5OS1lMTBhMTY0MTVhY2UiLCJkZDlhMzg3ZC01YmE0LTRmZjQtOWFlYS04ZmFhNGIyZDQ0YzMiLCJkNTc3NTI3ZC1mM2RkLTQ1NDEtODcxMy1mNGUyZDM3YjI3NjUiLCJmZWE3Njg4MS1iYjg5LTRjMTUtYWMzMS0wMWQ1YWI0ZDM1MmEiLCI3ZTY1YTE4My1iYWM0LTQ4NjQtODdiYi1kY2IzNTQ5N2YzMDEiLCJmYzQ3MzE4Ny1lZTFjLTQ3NjUtYmRkZi1kYjk2MGI0MWUxNjEiLCJiYzdlMzM4YS03MGY0LTQ0YzAtOTgzMS1hMjhiYjYxOTgxZWQiLCI1NGFhZGU4ZS0zNzhhLTRjYjMtYmY2ZS1jNjFkZDg1Zjc1YjMiLCI4MDU1ODI5Mi1jZDBkLTRiN2EtYmQ5OC0wMTY2NmM3NWNmODMiLCJmODk5OGY5My0wZGE2LTQxZDktODJiMi1hM2UwMWNlZDYyZGUiLCI2OGJjZDg5My0wZWJjLTRiOWEtYjMyZC1mYTljZDhjYmRjMzAiLCIzM2NkZWU5Ni02MzQxLTRhZTUtOTdmYy0xYjI1YjA4OWQwODIiLCIxYWZkN2I5OS1lZTFiLTRjZTYtOWY5NS1jMDdhMDJjMTczNGYiLCI0ODhhMDg5YS05NTA2LTQxNWQtOTBlMy02OTQzYWE5YTk3ZWQiLCI2YzRjZjg5Yi0zYzk4LTQ2MmItOWExZi03NjA4Y2ZkNjNlYmQiLCJmZDk2YjQ5Yy1mNzJlLTRkOWYtODI5My1kMGI2OWMxMzA3NzIiLCJjNTk1Y2Q5ZC0yZDE0LTQ4OGEtYTUzMy1iMjkwOGUzN2UwNjkiLCIwZGVkZDY5ZS0xODQ1LTQ2NzItOTM4MS02ZmM4NTE0NDEwMWMiLCJiYWM5MWY5Zi04YjFmLTQ2MmEtODBiOC02M2M1OWMwY2MwNGQiLCI2MWU0ZjBhMS0yMDMyLTQ0NzctOWIyZi05NzdhZjYzMGJlZmQiLCI1NzkzZWJhNy1kNTQ4LTQxZmMtOTJhNS01YzMyNDI4MzA3OGMiLCJlMjU0NzRhZi1jNTA1LTQ3NDEtODA3NC0wMjU1YmEyNTEzNzEiLCIxZDlhMWRiOS1mZWY3LTQzYmUtODA1My1mNmFiNDA4ZDBkZjEiLCJmYTE3NWRiOS0wMDY4LTQ2MjktYTZiNS03YmEyZjc1OTQ2ZmMiLCI1MjMzZDViYi0wNDI0LTQwYzMtOTcxZi02NzVkN2IyMDFjNDYiLCI5OTYxODJiYy04M2I2LTQ5MDItOTI3OC1lNzMyNmJkZDk3MDAiLCJiMGZhYjdiZi0wYjkzLTRmNWMtOTE1Zi1jMWRiYTcyN2U5ZDciLCIwZTU2MDRjNS0xNTcwLTQwNmItODQxNi05ZTJlMGIyZjY5NTciLCI4NWE1MmRjYS1jNDRjLTQ5MzQtODgwYi02NzJmNWYxNDQxNjMiLCJiZjkxOGRjZC04MTllLTRhMDItYTU4Ny00MWY0Mzk4MzEwZTkiLCIyZmM4ZTZjZC05YjQ1LTQ1NzAtODIzMy05NWJlNGE1MzlmZWMiLCJhOTMyMzFkMy01MTYxLTRmNGEtYjZiZi05ZmIxYTdiZDNmNDMiLCJlMGU2OTVkMy1hMDRlLTQ1NzEtOGU5MS01MTVhNTFiMjc0OWIiLCJjNzM2Y2FkMy1hNWY3LTQ4YmQtYjZkZi1iZTk4ZjNiZGEzNGEiLCIyZmQzNDBkNC05M2I5LTQ4ZmUtODhmMC02NTdhNmM1MGNiZDIiLCI5Mzg1MGZkNS0xMzc5LTQ2MWUtYWZjYy0zOWU2NWE1NGI1MzAiLCIzMDE0MDRkYi0yMDk1LTQzNTAtYTUwMy0xOTIyYzU4ZTI1N2UiLCI1NjY0NzlkZC1iZDFmLTQ5ZDYtYjk2ZS0xNzU1MDM1M2M1ZDgiLCJmMmY5YzNlNy0yNDQ0LTQ0M2QtODFkNC1mYzgwNzk1Yzc2ZjMiLCIzMzU2NjdlYy0wZGU0LTQ0MTctOGM5Mi1iMjVjMDYzZGZiMmQiLCIzZjUxN2VlZC04NGMzLTRhMDctOTk2MS0xOTMyZjkxOWFkYWUiLCI0MzE5YzRmNS03MGNjLTQxNzYtYWFhOS0wYmQwODgxNWMwZTIiLCJkOWZlMjdmNi1iYWE3LTQ0NmEtYTdlMS1mYmE1Y2Q1ZWU5YzAiLCI0NWQyMjhmOC0xNGQ2LTQzYjQtOTgzOS1iZGI0ZjIxODBmZjEiLCI5NjU4ZWFmYi1kMTFkLTRmOWUtYTgyYi1iMzlmMjkyZTQ3MzkiLCI0ZjM2ODlmZi03YThiLTRhOTAtOTRlNy1lMDk4OTg3MDIwMjUiXSwiaXBhZGRyIjoiMTM2LjIyNi4yNDIuMjAzIiwibmFtZSI6Ikpvc3l1bGEgU2l0YSBTYWkgU3VkaGEiLCJvaWQiOiI4NDI1MGVhMC0zYzBiLTQ1MzEtYTczNy00ZDUxMTAwOWI1YjciLCJvbnByZW1fc2lkIjoiUy0xLTUtMjEtMTU0NzE2MTY0Mi0xMjE0NDQwMzM5LTY4MjAwMzMzMC0zMTkyMTMxIiwicmgiOiIwLkFSQUFCVnpYQlJyNjUwS2M4ZXRCYkRsdkxXNTFnVXIxWEN0UHU4ZjJYNnNoMXFzUUFNQS4iLCJyb2xlcyI6WyJSb2xvZGV4LlVzZXJzIl0sInNjcCI6IlJvbG9kZXguQVBJLkFMTCIsInN1YiI6Ik1qOWVPWlMyMW1na3U2UU1nOFE1MWNDZDVfcmd5enF2azRqNEJaR0JfbkEiLCJ0aWQiOiIwNWQ3NWMwNS1mYTFhLTQyZTctOWNmMS1lYjQxNmMzOTZmMmQiLCJ1bmlxdWVfbmFtZSI6Impvc3l1bGEuc2FpLnN1ZGhhQG1hZXJzay5jb20iLCJ1cG4iOiJqb3N5dWxhLnNhaS5zdWRoYUBtYWVyc2suY29tIiwidXRpIjoiRDZBWkVUeFoya3VBQnZZUXZlcDFBQSIsInZlciI6IjEuMCJ9.Vv6avj1r3IaTD_uxqw0bi3Zj1eV6UlBwxRFTGxvZaK1PURkJ-2A9UEKqcRORGzTbDe45tScTMuCiT-6yh0LGipWg25zC4SI2jEA15M-PW0rlsbNAqN4-oXWB4CHDiC-E6PQUndDm_7-KP6iO8CIsMycI5pJ-dVwQIoDhSxErDahXwmlfd4g4xxxXkQZIG94vTOJwBBz9fv5HdnADNmibwml1xVpL7Zjwv5sOa8d3AoogvIpnubwK9qXmPG-NosYKt-OP6csMARDqReetyS1innqYQIc46EmaZscpAM-JvsjwPd8f12lGXBtvSDBFAbN-iz5VKihOThh7n8gqRpwk9w"
-	
-	getreq, err  := http.NewRequest("GET", url ,nil ) 
+	folderId := vars["folderId"]
+	fileId := vars["fileId"]
+	tenantId := vars["tenantId"]
+
+	url := os.Getenv("FOLDER_URL") + folderId + "/files/" + fileId
+	tok := os.Getenv("TOKEN")
+	getreq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		http.Error(w, "Error creating GET request", http.StatusInternalServerError)
 		return
 	}
-	getreq.Header.Set("x-tenant-id", t_id ) // Replace with the appropriate value
+	getreq.Header.Set("x-tenant-id", tenantId)
 	getreq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tok))
 	getreq.Header.Set("Content-Type", "application/json")
 	client := &http.Client{
-		Timeout: 10 * time.Second, // Set the timeout duration
+		Timeout: 10 * time.Second,
 	}
-
 
 	// Make the request
 	getresp, err := client.Do(getreq)
@@ -58,44 +62,38 @@ func getFileHandler(w http.ResponseWriter, r *http.Request){
 	// Send the GET response back to the client
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(getBody)
-	
-
-	
-
-
-
-
 
 }
 
-
-func getFolderHandler(w http.ResponseWriter, r *http.Request){
+//to get a folder 
+func getFolderHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	t_id := vars["tenantId"]
+	tenantId := vars["tenantId"]
 
-	url := "https://rolodex.dev.maersk-digital.net/api/v1/storage/folders"
-	tok := "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IktRMnRBY3JFN2xCYVZWR0JtYzVGb2JnZEpvNCIsImtpZCI6IktRMnRBY3JFN2xCYVZWR0JtYzVGb2JnZEpvNCJ9.eyJhdWQiOiJhcGk6Ly80YTgxNzU2ZS01Y2Y1LTRmMmItYmJjNy1mNjVmYWIyMWQ2YWIiLCJpc3MiOiJodHRwczovL3N0cy53aW5kb3dzLm5ldC8wNWQ3NWMwNS1mYTFhLTQyZTctOWNmMS1lYjQxNmMzOTZmMmQvIiwiaWF0IjoxNzI1Mjc0MjA0LCJuYmYiOjE3MjUyNzQyMDQsImV4cCI6MTcyNTI3ODg5NywiYWNyIjoiMSIsImFpbyI6IkFaUUFhLzhYQUFBQXBkcE51S0I4MmN3Z0ZQN094K2VWOG1QSjY0UGUzU1JpcHU5aUlYMWRQejNqQS9tajF4b1JlR0JkeXlsSW1WSEVwNUR2d3BMdTRoUFlYOHRtZWRtQXM0anJEYVo1djMxNFBkcncyRThHaXNqcFlVRWt4bWt2blMzbjY3akoxblZWenZtOVdWOVBaS1RScXNwNkZzeEE1ang5dVVwd3ozYkdpZ3FPdHVHQnQyaUlCVGtGTFBuRGpLOUJyOTNldDFsUCIsImFtciI6WyJyc2EiLCJtZmEiXSwiYXBwaWQiOiJiNTg3MmUxNS01NzA5LTRlNmMtODA1OS01ZmE5MDdiOTVkOTciLCJhcHBpZGFjciI6IjAiLCJkZXZpY2VpZCI6IjgyYWI3ZWQ4LTg2YWQtNGFlNS05ZWRmLTg4NTZkOTdmNDA4MyIsImZhbWlseV9uYW1lIjoiU2FpIFN1ZGhhIiwiZ2l2ZW5fbmFtZSI6Ikpvc3l1bGEgU2l0YSIsImdyb3VwcyI6WyJiNzgyYjgwMy1iNjI3LTQ0NzctODgyNi1mM2ViMWYyMmIwZjgiLCJjZjdjZDcwNS0xNzIxLTRiNTItYmNlYS1hNjg1YTQwODZjZDQiLCI4MmUxODcwOS02OTczLTQwZjItYmQzNy05ZGYzYTkyOGJiOTQiLCJmOWRjNmQwZC1lODM4LTQ3OGYtODE1ZC05MzI3ODI2MDQxNDciLCJlOWMzODUxYS1jYzVkLTRmZGItOGRlOS0wY2Q2YTM0MGM0ZGMiLCJiMWIwZTkxYS1iOGMwLTRjNDctOGM4MS1mYjA4MmQyZDc1ZTEiLCJlM2Q3MzUxZi1hMjllLTQ0MDUtYTAwNi1hZjg2ODk1ZWRhMDEiLCI1MGQ3NTAyMi1lYjZlLTRlNTYtOGMzZC1kNDdiMmM2MGUwMjEiLCJhOTUxMTgyNC02ZWYxLTRjYmQtODM2Yi02NGVlNGRmMjVhNjkiLCJhZWNjOTMyNC0yMDM1LTRmMWQtOTMzZC1hMDQ4YTQ5OTFlYWYiLCIyNTRjM2UyOC02M2RmLTQ0MzgtOWEzNi02OWRhMzEwMjVkNzIiLCJjMWIzOGUzNi01OGY4LTRiMzktYTAzOC1hMDMwNzRmZTY4MTgiLCJjNDYzZjgzNi0yMmY1LTQ3MTQtOTNkZS0xMDcyMjkzYjQ2ZWEiLCJhZjAzODkzOC04YTI2LTQ0NWEtODZlZC02NThkMDhiY2UwYmMiLCI3ZWQ2ZjgzOS1lOTNiLTQ4YzAtYWRhMS04ODI3ZDU0ZjhmZGQiLCI3N2U3NzgzZS0xMDJjLTQzMzQtOWI4Mi0zY2RkYTYyODEzMDIiLCJmNDQzMGMzZi1iMzMzLTRjNGYtYTFmZC1iNjk2NWMzYWUxN2IiLCJjZjg4M2IzZi1iNzAwLTQ1ZTUtOTZkOS04NzQ4MmY4ZmQ3MmUiLCI5OTY5MTE0MC0zODRlLTQzNmQtODdmZi04NjFlN2IzNjEwMzciLCI5OTk3NGE0Mi1lYzc4LTQ1ZTAtOWM0OC03M2JiZjJkNDA3ZTkiLCI3ZGMxNDE0NC0wODA3LTQzYjctOTk2Ny0wZTg1NjEwMWRiNDEiLCI1MjViYjA0NS0yMjUxLTRjYjQtYWUxZS0yNzFkM2MwZDcyOTkiLCJmMDhlMjQ0OC0zMjljLTQ3M2YtODdiYi1iNzg5OGU5M2Q2YTIiLCJiMmEwNWQ0Yi1kZmE5LTRjNzktODQ4Yy0xZjk4OTZmMTk4YTYiLCIyYjgxODk0Yy05ZmE0LTQzOTUtODBmYy1kMWQ3MTJiNDQ5MDEiLCJmYjM4MjA0ZC00YTYyLTRkNTAtYWEzMy1jMzc3YTllZWMzZGUiLCJkZmM4ZDY1YS0yMjJhLTQwZWEtYTA3Ny0xYTFjMGY3OWQ5YWQiLCJkNjczN2M2YS03MmJhLTQwOTMtOWY5ZC05N2U1MjBiMmM2MTUiLCI4Njc0M2E2Yi1lMzkzLTRhY2UtYTgwMy03OTMzNjk0ZjdjZTIiLCJmMWNlZjU2Yi1lNjE5LTQ2ZGYtYWQ5Yy03NTJhMjI0OGFjMzIiLCJiZDYyYmU2Yy01ZWNiLTQ4NzgtODcyYy1hYzliN2YzN2QzYTIiLCI4YzE2MDM2ZC04Njk4LTQyZTAtYjE0Yy1lZjAyNjdhZTFhMmEiLCI5OThmMmE2ZC0zNzllLTRmYmUtYmYzYy1lNDU0OWE4ODg4YmMiLCI3MTFiZWE2ZS0wMWY4LTQyYmUtYTY0Mi1lOTE0NTA4ZDkwZDEiLCIwODU5N2Q3MC03OWEyLTQyMjctOTFlYy1mOGQ2YzJlNGJlNjUiLCJiNjg4YzA3MC0yZDJjLTRlMTItYWUyZC1hOTViZGI4ZDQxYTQiLCI3MGE5ZmQ3My00NjY2LTRlZjQtOWIzOS0xYTQ4MmQ0OTliZTIiLCJlYjM1NDU3NC02ZmMzLTRlNjEtYjZiOS1hMzM1MDU5NTk2YjAiLCI5MmY3Nzk3Yi02YjI3LTQ2MDgtYmM5OS1lMTBhMTY0MTVhY2UiLCJkZDlhMzg3ZC01YmE0LTRmZjQtOWFlYS04ZmFhNGIyZDQ0YzMiLCJkNTc3NTI3ZC1mM2RkLTQ1NDEtODcxMy1mNGUyZDM3YjI3NjUiLCJmZWE3Njg4MS1iYjg5LTRjMTUtYWMzMS0wMWQ1YWI0ZDM1MmEiLCI3ZTY1YTE4My1iYWM0LTQ4NjQtODdiYi1kY2IzNTQ5N2YzMDEiLCJmYzQ3MzE4Ny1lZTFjLTQ3NjUtYmRkZi1kYjk2MGI0MWUxNjEiLCJiYzdlMzM4YS03MGY0LTQ0YzAtOTgzMS1hMjhiYjYxOTgxZWQiLCI1NGFhZGU4ZS0zNzhhLTRjYjMtYmY2ZS1jNjFkZDg1Zjc1YjMiLCI4MDU1ODI5Mi1jZDBkLTRiN2EtYmQ5OC0wMTY2NmM3NWNmODMiLCJmODk5OGY5My0wZGE2LTQxZDktODJiMi1hM2UwMWNlZDYyZGUiLCI2OGJjZDg5My0wZWJjLTRiOWEtYjMyZC1mYTljZDhjYmRjMzAiLCIzM2NkZWU5Ni02MzQxLTRhZTUtOTdmYy0xYjI1YjA4OWQwODIiLCIxYWZkN2I5OS1lZTFiLTRjZTYtOWY5NS1jMDdhMDJjMTczNGYiLCI0ODhhMDg5YS05NTA2LTQxNWQtOTBlMy02OTQzYWE5YTk3ZWQiLCI2YzRjZjg5Yi0zYzk4LTQ2MmItOWExZi03NjA4Y2ZkNjNlYmQiLCJmZDk2YjQ5Yy1mNzJlLTRkOWYtODI5My1kMGI2OWMxMzA3NzIiLCJjNTk1Y2Q5ZC0yZDE0LTQ4OGEtYTUzMy1iMjkwOGUzN2UwNjkiLCIwZGVkZDY5ZS0xODQ1LTQ2NzItOTM4MS02ZmM4NTE0NDEwMWMiLCJiYWM5MWY5Zi04YjFmLTQ2MmEtODBiOC02M2M1OWMwY2MwNGQiLCI2MWU0ZjBhMS0yMDMyLTQ0NzctOWIyZi05NzdhZjYzMGJlZmQiLCI1NzkzZWJhNy1kNTQ4LTQxZmMtOTJhNS01YzMyNDI4MzA3OGMiLCJlMjU0NzRhZi1jNTA1LTQ3NDEtODA3NC0wMjU1YmEyNTEzNzEiLCIxZDlhMWRiOS1mZWY3LTQzYmUtODA1My1mNmFiNDA4ZDBkZjEiLCJmYTE3NWRiOS0wMDY4LTQ2MjktYTZiNS03YmEyZjc1OTQ2ZmMiLCI1MjMzZDViYi0wNDI0LTQwYzMtOTcxZi02NzVkN2IyMDFjNDYiLCI5OTYxODJiYy04M2I2LTQ5MDItOTI3OC1lNzMyNmJkZDk3MDAiLCJiMGZhYjdiZi0wYjkzLTRmNWMtOTE1Zi1jMWRiYTcyN2U5ZDciLCIwZTU2MDRjNS0xNTcwLTQwNmItODQxNi05ZTJlMGIyZjY5NTciLCI4NWE1MmRjYS1jNDRjLTQ5MzQtODgwYi02NzJmNWYxNDQxNjMiLCJiZjkxOGRjZC04MTllLTRhMDItYTU4Ny00MWY0Mzk4MzEwZTkiLCIyZmM4ZTZjZC05YjQ1LTQ1NzAtODIzMy05NWJlNGE1MzlmZWMiLCJhOTMyMzFkMy01MTYxLTRmNGEtYjZiZi05ZmIxYTdiZDNmNDMiLCJlMGU2OTVkMy1hMDRlLTQ1NzEtOGU5MS01MTVhNTFiMjc0OWIiLCJjNzM2Y2FkMy1hNWY3LTQ4YmQtYjZkZi1iZTk4ZjNiZGEzNGEiLCIyZmQzNDBkNC05M2I5LTQ4ZmUtODhmMC02NTdhNmM1MGNiZDIiLCI5Mzg1MGZkNS0xMzc5LTQ2MWUtYWZjYy0zOWU2NWE1NGI1MzAiLCIzMDE0MDRkYi0yMDk1LTQzNTAtYTUwMy0xOTIyYzU4ZTI1N2UiLCI1NjY0NzlkZC1iZDFmLTQ5ZDYtYjk2ZS0xNzU1MDM1M2M1ZDgiLCJmMmY5YzNlNy0yNDQ0LTQ0M2QtODFkNC1mYzgwNzk1Yzc2ZjMiLCIzMzU2NjdlYy0wZGU0LTQ0MTctOGM5Mi1iMjVjMDYzZGZiMmQiLCIzZjUxN2VlZC04NGMzLTRhMDctOTk2MS0xOTMyZjkxOWFkYWUiLCI0MzE5YzRmNS03MGNjLTQxNzYtYWFhOS0wYmQwODgxNWMwZTIiLCJkOWZlMjdmNi1iYWE3LTQ0NmEtYTdlMS1mYmE1Y2Q1ZWU5YzAiLCI0NWQyMjhmOC0xNGQ2LTQzYjQtOTgzOS1iZGI0ZjIxODBmZjEiLCI5NjU4ZWFmYi1kMTFkLTRmOWUtYTgyYi1iMzlmMjkyZTQ3MzkiLCI0ZjM2ODlmZi03YThiLTRhOTAtOTRlNy1lMDk4OTg3MDIwMjUiXSwiaXBhZGRyIjoiMTM2LjIyNi4yNDIuMjAzIiwibmFtZSI6Ikpvc3l1bGEgU2l0YSBTYWkgU3VkaGEiLCJvaWQiOiI4NDI1MGVhMC0zYzBiLTQ1MzEtYTczNy00ZDUxMTAwOWI1YjciLCJvbnByZW1fc2lkIjoiUy0xLTUtMjEtMTU0NzE2MTY0Mi0xMjE0NDQwMzM5LTY4MjAwMzMzMC0zMTkyMTMxIiwicmgiOiIwLkFSQUFCVnpYQlJyNjUwS2M4ZXRCYkRsdkxXNTFnVXIxWEN0UHU4ZjJYNnNoMXFzUUFNQS4iLCJyb2xlcyI6WyJSb2xvZGV4LlVzZXJzIl0sInNjcCI6IlJvbG9kZXguQVBJLkFMTCIsInN1YiI6Ik1qOWVPWlMyMW1na3U2UU1nOFE1MWNDZDVfcmd5enF2azRqNEJaR0JfbkEiLCJ0aWQiOiIwNWQ3NWMwNS1mYTFhLTQyZTctOWNmMS1lYjQxNmMzOTZmMmQiLCJ1bmlxdWVfbmFtZSI6Impvc3l1bGEuc2FpLnN1ZGhhQG1hZXJzay5jb20iLCJ1cG4iOiJqb3N5dWxhLnNhaS5zdWRoYUBtYWVyc2suY29tIiwidXRpIjoiRDZBWkVUeFoya3VBQnZZUXZlcDFBQSIsInZlciI6IjEuMCJ9.Vv6avj1r3IaTD_uxqw0bi3Zj1eV6UlBwxRFTGxvZaK1PURkJ-2A9UEKqcRORGzTbDe45tScTMuCiT-6yh0LGipWg25zC4SI2jEA15M-PW0rlsbNAqN4-oXWB4CHDiC-E6PQUndDm_7-KP6iO8CIsMycI5pJ-dVwQIoDhSxErDahXwmlfd4g4xxxXkQZIG94vTOJwBBz9fv5HdnADNmibwml1xVpL7Zjwv5sOa8d3AoogvIpnubwK9qXmPG-NosYKt-OP6csMARDqReetyS1innqYQIc46EmaZscpAM-JvsjwPd8f12lGXBtvSDBFAbN-iz5VKihOThh7n8gqRpwk9w"
-	req, err := http.NewRequest("GET",url, nil )
+	url := os.Getenv("FOLDER_URL")
+
+	token := os.Getenv("TOKEN")
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		http.Error(w, "Error creating GET request", http.StatusInternalServerError)
 		return
 	}
 	// Set headers
-	req.Header.Set("x-tenant-id", t_id ) // Replace with the appropriate value
+	req.Header.Set("x-tenant-id", tenantId) // Replace with the appropriate value
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tok))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
-	// Create a new HTTP client with a timeout
+	// Create a new HTTP client
 	client := &http.Client{
-		Timeout: 10 * time.Second, // Set the timeout duration
+		Timeout: 10 * time.Second,
 	}
-
 
 	// Make the request
 	getresp, err := client.Do(req)
 	if err != nil {
-		http.Error(w, "Error making GET request", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+
 	}
 	defer getresp.Body.Close()
 
@@ -109,25 +107,245 @@ func getFolderHandler(w http.ResponseWriter, r *http.Request){
 	// Send the GET response back to the client
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(getBody)
-	
+
 }
-	
+
+//to get metadata of a file or folder 
+func getMetadata(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	objectId := vars["id"]
+	tenanatId := vars["tenantId"]
+	token := os.Getenv("TOKEN")
+	url := os.Getenv("META_DATA_URL") + "/metadata?objectId="+objectId
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		http.Error(w, "Error while creating the GET request", http.StatusInternalServerError)
+
+	}
+
+	req.Header.Set("objectId", objectId)
+	req.Header.Set("x-tenant-id", tenanatId)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	getresp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Error while making GET request", http.StatusInternalServerError)
+	}
+	defer getresp.Body.Close()
+	respBody, err := ioutil.ReadAll(getresp.Body)
+	if err != nil {
+		http.Error(w, "Error reading GET response body", http.StatusInternalServerError)
+		return
+	}
+
+	// Send the back to the client
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(respBody)
+
+}
+
+// Post Request Handlers
+
+//to create a folder 
+func createFolder(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	root_folder_id := vars["id"]
+	tenanatId := vars["tenantId"]
+	requestBodyStruct := struct {
+		Name string `json:"name"`
+	}{
+		Name: vars["name"],
+	}
+
+	body, err := json.Marshal(requestBodyStruct)
+	if err != nil {
+		http.Error(w, "Error marshalling request body", http.StatusInternalServerError)
+		return
+	}
+
+	url := os.Getenv("FOLDER_URL") + "/" + root_folder_id
+	token := os.Getenv("TOKEN")
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		http.Error(w, "Error creating POST request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("id", root_folder_id)
+	req.Header.Set("x-tenant-id", tenanatId)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	client := &http.Client{
+		Timeout: 10 * time.Second, // Set the timeout duration
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Error making POST request", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Send the response back to the client
+	postBody, err := ioutil.ReadAll(resp.Body)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(postBody)
+
+}
+
+//add metadata to a file or folder 
+
+func addMetadata(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	tenantId := vars["tenantId"]
+	objectId := vars["objectId"]
+	attributeName := vars["attrName"]
+	attributeValue := vars["attrValue"]
+	url := os.Getenv("META_DATA_URL") + "/attributes"
+
+	token := os.Getenv("TOKEN")
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("x-tenant-id", tenantId)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Error making GET request", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	respBody, err := ioutil.ReadAll(resp.Body)
+
+	type CreatedBy struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+		OID   string `json:"oid"`
+	}
+
+	type ModifiedBy struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+		OID   string `json:"oid"`
+	}
+
+	type ResponseData struct {
+		ID           string      `json:"id"`
+		Name         string      `json:"name"`
+		DataType     string      `json:"dataType"`
+		Description  string      `json:"description"`
+		Required     bool        `json:"required"`
+		TenantID     string      `json:"tenantId"`
+		DefaultValue interface{} `json:"defaultValue"`
+		CreatedDate  string      `json:"createdDate"`
+		ModifiedDate string      `json:"modifiedDate"`
+		CreatedBy    CreatedBy   `json:"createdBy"`
+		ModifiedBy   ModifiedBy  `json:"modifiedBy"`
+		Type         string      `json:"type"`
+	}
+
+	type attributeData struct {
+		Data []ResponseData `json:"data"`
+	}
+
+	type Metadata struct {
+		AttributeID string `json:"attributeId"`
+		Value       string `json:"value"`
+	}
+
+	type BodyStruct struct {
+		ObjectID string     `json:"objectId"`
+		Metadata []Metadata `json:"metadata"`
+	}
+
+	// Inside your handler
+	var attributeDataResponse attributeData
+	err = json.Unmarshal(respBody, &attributeDataResponse)
+	if err != nil {
+		http.Error(w, "Error unmarshalling GET response body", http.StatusInternalServerError)
+		return
+	}
+
+	var body BodyStruct
+	for _, attribute := range attributeDataResponse.Data {
+		if attribute.Name == attributeName {
+			body = BodyStruct{
+				ObjectID: objectId,
+				Metadata: []Metadata{
+					{
+						AttributeID: attribute.ID,
+						Value:       attributeValue,
+					},
+				},
+			}
+			break
+		}
+	}
+
+	requestBody, err := json.Marshal(body)
+	if err != nil {
+		http.Error(w, "Error marshalling request body", http.StatusInternalServerError)
+		return
+	}
+
+	//  POST request
+	URL := os.Getenv("META_DATA_URL") + "/metadata"
+	request, err := http.NewRequest("POST", URL, bytes.NewBuffer(requestBody))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	request.Header.Set("x-tenant-id", tenantId)
+	request.Header.Set("Content-Type", "application/json")
+
+	client2 := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp2, err := client2.Do(request)
+	if err != nil {
+		http.Error(w, "Error making POST request", http.StatusInternalServerError)
+		return
+	}
+	defer resp2.Body.Close()
+
+	// return the response from the POST request
+	responseBody2, err := ioutil.ReadAll(resp2.Body)
+	if err != nil {
+		http.Error(w, "Error reading POST response body", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(responseBody2)
+
+}
+
 func main() {
-	
-	
+
 	r := mux.NewRouter()
 
 	// Set the HTTP handlers for specific routes
 	r.HandleFunc("/getfile/{folderId}/{fileId}/{tenantId}", getFileHandler).Methods("GET") //to download a file
-	r.HandleFunc("/getfolder/{tenantId}", getFolderHandler).Methods("GET")  //to get details of folder 
-
+	r.HandleFunc("/getfolder/{tenantId}", getFolderHandler)                                //to get details of folder
+	r.HandleFunc("/createFolder/{tenantId}/{id}/{name}", createFolder)                     //to create a folder
+	r.HandleFunc("/addMetadata/{tenantId}/{objectId}/{attrName}/{attrValue}", addMetadata) //to add metadata to a file or folder
+	r.HandleFunc("/getMetadata/{tenantId}/{id}", getMetadata)                               // to get metadata of a file or folder
 	// Start the server on port 8080
 	fmt.Println("Server is running on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Println("Error starting server:", err)
 	}
-	
+
 }
-
-
-

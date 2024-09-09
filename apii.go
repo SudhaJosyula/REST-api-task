@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -17,7 +18,7 @@ import (
 
 // get handlers
 
-//to get a file 
+//to get a file
 func getFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodGet {
@@ -30,7 +31,7 @@ func getFileHandler(w http.ResponseWriter, r *http.Request) {
 	fileId := vars["fileId"]
 	tenantId := vars["tenantId"]
 
-	url := os.Getenv("FOLDER_URL") + folderId + "/files/" + fileId
+	url := os.Getenv("FOLDER_URL")  + "/"+ folderId + "/files/" + fileId
 	tok := os.Getenv("TOKEN")
 	getreq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -52,16 +53,25 @@ func getFileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer getresp.Body.Close()
 
-	// Read the response body for GET request
-	getBody, err := ioutil.ReadAll(getresp.Body)
+	outFile, err := os.Create(fileId)
 	if err != nil {
-		http.Error(w, "Error reading GET response body", http.StatusInternalServerError)
+		http.Error(w, "Error creating file", http.StatusInternalServerError)
+		return
+	}
+	defer outFile.Close()
+
+	// Copy the response body to the file
+	_, err = io.Copy(outFile, getresp.Body)
+	if err != nil {
+		http.Error(w, "Error saving file", http.StatusInternalServerError)
 		return
 	}
 
-	// Send the GET response back to the client
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(getBody)
+	// Send a response back to the client
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("File saved successfully"))
+
+	
 
 }
 
@@ -332,6 +342,106 @@ func addMetadata(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func sharePermissions(w http.ResponseWriter,  r *http.Request){
+	token := os.Getenv("TOKEN")
+	vars := mux.Vars(r)
+	tenantId := vars["tenantId"]
+	objectId := vars["objectId"]
+	objectType := vars["objectType"]
+	enttyId := vars["entityId"]
+	entityType := vars["entityType"]
+	relation := vars["relation"]
+
+	type BodyStruct struct {
+		ObjectId   string `json:"objectId"`
+		ObjectType string `json:"objectType"`
+		EntityId   string `json:"entityId"`
+		EntityType string `json:"entityType"`
+		Relation   string `json:"relation"`
+	}
+	
+	reqBody := BodyStruct{
+		ObjectId: objectId,
+		ObjectType: objectType,
+		EntityId: enttyId,
+		EntityType: entityType,
+		Relation: relation,
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	url := os.Getenv("TOKEN")
+	request , err := http.NewRequest(url , "POST" , bytes.NewBuffer(body))
+
+	if err != nil{
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+	}
+	request.Header.Set("Authorization" , fmt.Sprintf("Bearer %s", token))
+	request.Header.Set("x-tenant-id", tenantId)
+	request.Header.Set("Content-Type", "application/json")
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	
+	respBody , err := client.Do(request)
+	if err != nil {
+		http.Error(w, "Error making POST request", http.StatusInternalServerError)
+		return
+	}
+	defer respBody.Body.Close()
+
+	// return the response from the POST request
+	response, err := ioutil.ReadAll(respBody.Body)
+	if err != nil {
+		http.Error(w, "Error reading POST response body", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(response )
+
+
+}
+
+func onBoardingHandler(w http.ResponseWriter,  r *http.Request){
+	vars := mux.Vars(r)
+	ad_group_id := vars["ad_group_id"]
+	token := os.Getenv("TOKEN")
+	// url := os.Getenv("ONBOARDING_URL") + "?/ad_group_id="+ ad_group_id
+	url := "https://rolodex.dev.maersk-digital.net/api/v1/storage/tenant?ad_group_id=" + ad_group_id
+	request,err := http.NewRequest( "GET",url , nil)
+	if err != nil{
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	}
+	// request.Header.Set("Authentication" , fmt.Sprintf("Bearer %s", token))
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	request.Header.Set("ad_group_id" , ad_group_id)
+	request.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+
+	respBody , err := client.Do(request)
+	if err != nil{
+		http.Error(w, err.Error() , http.StatusInternalServerError)
+		return
+	}
+	defer respBody.Body.Close()
+	response, err := ioutil.ReadAll(respBody.Body)
+	if err != nil{
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(response)
+
+}
+
+
 func main() {
 
 	r := mux.NewRouter()
@@ -342,6 +452,8 @@ func main() {
 	r.HandleFunc("/createFolder/{tenantId}/{id}/{name}", createFolder)                     //to create a folder
 	r.HandleFunc("/addMetadata/{tenantId}/{objectId}/{attrName}/{attrValue}", addMetadata) //to add metadata to a file or folder
 	r.HandleFunc("/getMetadata/{tenantId}/{id}", getMetadata)                               // to get metadata of a file or folder
+	r.HandleFunc("/sharePermission/{tenantId}/{objectID}/{objectType}/{entityId}/{entityType}/{relation}" , sharePermissions)
+	r.HandleFunc("/onBoarding/{ad_group_id}" , onBoardingHandler) //getting onboarding details of a tenant
 	// Start the server on port 8080
 	fmt.Println("Server is running on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {

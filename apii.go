@@ -1,6 +1,7 @@
 package main
 
 import (
+	
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,9 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"path"
+	"mime"
+	"regexp"
 
 	"github.com/gorilla/mux"
 	_ "github.com/joho/godotenv/autoload"
@@ -18,13 +22,9 @@ import (
 
 // get handlers
 
-//to get a file
+//to download a file from a specific folder
 func getFileHandler(w http.ResponseWriter, r *http.Request) {
 
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
 	vars := mux.Vars(r)
 
 	folderId := vars["folderId"]
@@ -32,51 +32,73 @@ func getFileHandler(w http.ResponseWriter, r *http.Request) {
 	tenantId := vars["tenantId"]
 
 	url := os.Getenv("FOLDER_URL")  + "/"+ folderId + "/files/" + fileId
-	tok := os.Getenv("TOKEN")
-	getreq, err := http.NewRequest("GET", url, nil)
+	token := os.Getenv("TOKEN")
+	request, err := http.NewRequest("GET" , url , nil)
 	if err != nil {
-		http.Error(w, "Error creating GET request", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	getreq.Header.Set("x-tenant-id", tenantId)
-	getreq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tok))
-	getreq.Header.Set("Content-Type", "application/json")
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	request.Header.Set("x-tenant-id", tenantId) // Replace with the appropriate value
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	request.Header.Set("Accept",  "application/json"  )
+	client := http.Client{Timeout: time.Second * 10}
 
-	// Make the request
-	getresp, err := client.Do(getreq)
+	response, err := client.Do(request)
 	if err != nil {
-		http.Error(w, "Error making GET request", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer getresp.Body.Close()
-
-	outFile, err := os.Create(fileId)
+	defer response.Body.Close()
+	filename, err := getFilenameFromResponse(response, url)
 	if err != nil {
-		http.Error(w, "Error creating file", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	outFile, err := os.Create(filename)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer outFile.Close()
 
-	// Copy the response body to the file
-	_, err = io.Copy(outFile, getresp.Body)
+	_, err = io.Copy(outFile, response.Body)
 	if err != nil {
-		http.Error(w, "Error saving file", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	// Send a response back to the client
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("File saved successfully"))
-
 	
+	w.Write( []byte("File successfully downloaded"))
+
 
 }
+//extracts the filename from the HTTP response.
+func getFilenameFromResponse(resp *http.Response, url string) (string, error) {
+    contentDisposition := resp.Header.Get("Content-Disposition")
+    if contentDisposition != "" {
+        // Look for 'filename=' in the header
+        _, params, err := mime.ParseMediaType(contentDisposition)
+        if err == nil && params["filename"] != "" {
+            return params["filename"], nil
+        }
+        regEx := regexp.MustCompile(`(?i)filename\*?=["']?([^;"']+)["']?`)
+        matches := regEx.FindStringSubmatch(contentDisposition)
+        if len(matches) > 1 {
+            return matches[1], nil
+        }
+        return "", fmt.Errorf("unable to extract filename from Content-Disposition header")
+    }
+ 
+    
+    filename := path.Base(url)
+    if filename == "/" || filename == "" {
+        return "", fmt.Errorf("unable to determine filename")
+    }
+    return filename, nil
+}
 
-//to get a folder 
-func getFolderHandler(w http.ResponseWriter, r *http.Request) {
+//get the folder based on tenant Id
+func getFolderMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	tenantId := vars["tenantId"]
 
@@ -88,17 +110,13 @@ func getFolderHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error creating GET request", http.StatusInternalServerError)
 		return
 	}
-	// Set headers
+
 	req.Header.Set("x-tenant-id", tenantId) // Replace with the appropriate value
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-
-	// Create a new HTTP client
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-
-	// Make the request
 	getresp, err := client.Do(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -107,17 +125,49 @@ func getFolderHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer getresp.Body.Close()
 
-	// Read the response body for GET request
 	getBody, err := ioutil.ReadAll(getresp.Body)
 	if err != nil {
 		http.Error(w, "Error reading GET response body", http.StatusInternalServerError)
 		return
 	}
 
-	// Send the GET response back to the client
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(getBody)
 
+}
+
+//get detaiils of a specific folder 
+
+func getFolderHandler(w http.ResponseWriter, r *http.Request){
+	vars := mux.Vars(r)
+	id := vars["id"]
+	tenanatId := vars["tenantId"]
+	token := os.Getenv("TOKEN")
+	url := os.Getenv("FOLDER_URL") + "/" + id
+
+	request,err := http.NewRequest("GET" , url , nil)
+	if err != nil{
+		http.Error(w, err.Error() , http.StatusInternalServerError)
+	}
+	request.Header.Set("x-tenant-id", tenanatId)
+	request.Header.Set("id", id)
+	request.Header.Set("Authorization" , fmt.Sprintf("Bearer %s", token))
+
+	client := &http.Client{
+		Timeout: time.Second *10,
+	}
+
+	response , err  := client.Do(request)
+	if err != nil{
+		http.Error(w, err.Error() , http.StatusInternalServerError)
+	}
+	defer response.Body.Close()
+	respBody, err := ioutil.ReadAll(response.Body)
+	if err != nil{
+		http.Error(w, err.Error() , http.StatusInternalServerError)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(respBody)
 }
 
 //to get metadata of a file or folder 
@@ -158,6 +208,7 @@ func getMetadata(w http.ResponseWriter, r *http.Request) {
 	w.Write(respBody)
 
 }
+
 
 // Post Request Handlers
 
@@ -210,7 +261,7 @@ func createFolder(w http.ResponseWriter, r *http.Request) {
 
 //add metadata to a file or folder 
 
-func addMetadata(w http.ResponseWriter, r *http.Request) {
+func addMetadata(w http.ResponseWriter, r *http.Request) {   //fetches the sttributes 
 	vars := mux.Vars(r)
 	tenantId := vars["tenantId"]
 	objectId := vars["objectId"]
@@ -348,32 +399,43 @@ func sharePermissions(w http.ResponseWriter,  r *http.Request){
 	tenantId := vars["tenantId"]
 	objectId := vars["objectId"]
 	objectType := vars["objectType"]
-	enttyId := vars["entityId"]
+	entityId := vars["entityId"]
 	entityType := vars["entityType"]
 	relation := vars["relation"]
 
+	type RelationStruct struct {
+        ObjectId   string `json:"objectId"`
+        ObjectType string `json:"objectType"`
+        EntityId   string `json:"entityId"`
+        EntityType string `json:"entityType"`
+        Relation   string `json:"relation"`
+    }
 	type BodyStruct struct {
-		ObjectId   string `json:"objectId"`
-		ObjectType string `json:"objectType"`
-		EntityId   string `json:"entityId"`
-		EntityType string `json:"entityType"`
-		Relation   string `json:"relation"`
-	}
-	
-	reqBody := BodyStruct{
-		ObjectId: objectId,
-		ObjectType: objectType,
-		EntityId: enttyId,
-		EntityType: entityType,
-		Relation: relation,
-	}
-	body, err := json.Marshal(reqBody)
+        Relations []RelationStruct `json:"relations"`
+    }
+
+    // Create the request body with the correct format
+    reqBody := BodyStruct{
+        Relations: []RelationStruct{
+            {
+                ObjectId:   objectId,
+                ObjectType: objectType,
+                EntityId:   entityId,
+                EntityType: entityType,
+                Relation:   relation,
+            },
+        },
+    }
+
+    // Marshal the request body to JSON
+    body, err := json.Marshal(reqBody)
+
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
-	url := os.Getenv("TOKEN")
-	request , err := http.NewRequest(url , "POST" , bytes.NewBuffer(body))
+	url := os.Getenv("SHARE_URL")
+	request , err := http.NewRequest( "POST" ,url , bytes.NewBuffer(body))
 
 	if err != nil{
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -401,6 +463,9 @@ func sharePermissions(w http.ResponseWriter,  r *http.Request){
 	}
 
 	w.Write(response )
+	
+	
+
 
 
 }
@@ -441,19 +506,60 @@ func onBoardingHandler(w http.ResponseWriter,  r *http.Request){
 
 }
 
+func deleteFile(w http.ResponseWriter, r *http.Request){
+	vars := mux.Vars(r)
+	fileId := vars["fileId"]
+	folderId := vars["folderId"]
+	tenantId := vars["tenantId"]
+	token := os.Getenv("TOKEN")
+	url := os.Getenv("FOLDER_URL") + "/" + folderId + "/files/" + fileId
+	request,err := http.NewRequest("DELETE" , url , nil)
+
+	if err != nil{
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+	}
+	request.Header.Set("Authorization" , fmt.Sprintf("Bearer %s", token))
+	request.Header.Set("x-tenant-id", tenantId)
+	request.Header.Set("Content-Type", "application/json")
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	respBody , err := client.Do(request)
+	if err != nil {
+		http.Error(w, "Error making POST request", http.StatusInternalServerError)
+		return
+	}
+	defer respBody.Body.Close()
+
+	// return the response from the POST request
+	response, err := ioutil.ReadAll(respBody.Body)
+	if err != nil {
+		http.Error(w, "Error reading POST response body", http.StatusInternalServerError)
+		return
+	}
+	fmt.Println(response)
+
+	w.Write([]byte("deleted successfully"))
+	
+}
+
 
 func main() {
 
 	r := mux.NewRouter()
 
 	// Set the HTTP handlers for specific routes
-	r.HandleFunc("/getfile/{folderId}/{fileId}/{tenantId}", getFileHandler).Methods("GET") //to download a file
-	r.HandleFunc("/getfolder/{tenantId}", getFolderHandler)                                //to get details of folder
+	r.HandleFunc("/getfile/{folderId}/{fileId}/{tenantId}", getFileHandler)//to download a file
+	r.HandleFunc("/getfolder/{tenantId}", getFolderMetadataHandler) // to get a folder
+	r.HandleFunc("/getfolder/{tenantId}/{id}" , getFolderHandler)                               //to get folder metadata by tenanatId
+	
 	r.HandleFunc("/createFolder/{tenantId}/{id}/{name}", createFolder)                     //to create a folder
 	r.HandleFunc("/addMetadata/{tenantId}/{objectId}/{attrName}/{attrValue}", addMetadata) //to add metadata to a file or folder
 	r.HandleFunc("/getMetadata/{tenantId}/{id}", getMetadata)                               // to get metadata of a file or folder
-	r.HandleFunc("/sharePermission/{tenantId}/{objectID}/{objectType}/{entityId}/{entityType}/{relation}" , sharePermissions)
-	r.HandleFunc("/onBoarding/{ad_group_id}" , onBoardingHandler) //getting onboarding details of a tenant
+	r.HandleFunc("/sharePermission/{tenantId}/{objectId}/{objectType}/{entityId}/{entityType}/{relation}" , sharePermissions) 
+	r.HandleFunc("/onBoarding/{ad_group_id}" , onBoardingHandler) //getting details of a tenant
+	r.HandleFunc("/deleteFile/{fileId}/{folderId}/{tenantId}" , deleteFile) //delete file
 	// Start the server on port 8080
 	fmt.Println("Server is running on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
